@@ -23,7 +23,7 @@ Pages.notifikasi = {
     const { h, icon, num, $ } = UI;
     const cfgRes = App.can(App.SAO) ? await API.call('notif.config', {}, { silent: true }) : null;
     const cfg = cfgRes && cfgRes.success ? cfgRes.data : null;
-    const st = { rows: [], ringkas: null, pick: new Set(), onlyWA: false, batch: cfg ? cfg.batchDefault : 20, jeda: cfg ? cfg.jeda : '5', active: null, auto: false, timer: null, count: 0 };
+    const st = { rows: [], ringkas: null, pick: new Set(), onlyWA: false, batch: cfg ? cfg.batchDefault : 20, jeda: cfg ? cfg.jeda : '5', perPutaran: (cfg && cfg.perPutaran) || 5, active: null, auto: true, timer: null, count: 0, busy: false };
     body.innerHTML =
       (cfg && !cfg.waAktif ? '<div class="notice warn">' + icon('alert') + '<div>WhatsApp belum aktif. Isi token Fonnte & nyalakan saklar di tab <a href="#/notifikasi?tab=konfig">Konfigurasi</a>.</div></div>' : '') +
       '<div class="grid g2 mb"><section class="card"><h2 class="sec-title" style="margin-bottom:14px">1. Pilih Sasaran</h2>' +
@@ -53,8 +53,8 @@ Pages.notifikasi = {
     const preview = () => { const f = recips()[0]; $('#bPrev').textContent = $('#bPesan').value.replace(/\{(\w+)\}/g, (m, k) => (vars(f)[k] !== undefined ? vars(f)[k] : m)); };
     const summary = () => {
       const n = recips().length, b = st.batch, j = String($('#bJeda').value || '5').split('-').map(Number), avgJ = j.length > 1 ? (j[0] + j[1]) / 2 : j[0];
-      const batches = Math.ceil(n / b), mins = Math.max(batches, Math.ceil(n * (avgJ || 5) / 60));
-      $('#bSum').innerHTML = '<b>' + num(n) + '</b> penerima → <b>' + num(batches) + '</b> batch · estimasi ±' + num(mins) + ' menit';
+      const batches = Math.ceil(n / b), mins = Math.max(Math.ceil(batches / st.perPutaran), Math.ceil(n * (avgJ || 5) / 60));
+      $('#bSum').innerHTML = '<b>' + num(n) + '</b> penerima → <b>' + num(batches) + '</b> batch · dikirim ' + st.perPutaran + ' batch per putaran · estimasi ±' + num(mins) + ' menit (jeda antarpesan diatur Fonnte)';
       $('#bGo').innerHTML = icon('send') + 'Mulai Blast (' + num(n) + ' nomor)';
       UI.$$('#bBatch button').forEach(x => x.classList.toggle('on', +x.dataset.n === b));
     };
@@ -93,9 +93,9 @@ Pages.notifikasi = {
     $('#bGo').onclick = (e) => {
       const list = recips(); if (!list.length) { UI.toast('Belum ada penerima valid yang dipilih.', 'error'); return; }
       if (!$('#bJudul').value.trim()) { UI.toast('Isi judul internal blast.', 'error'); return; }
-      UI.confirm({ title: 'Mulai blast?', message: 'Pesan akan dikirim ke <b>' + num(list.length) + '</b> nomor dalam ' + Math.ceil(list.length / st.batch) + ' batch (' + st.batch + ' per batch, jeda ' + h($('#bJeda').value) + ' dtk). Server tetap mengirim 1 batch/menit walau halaman ditutup.', okText: 'Mulai blast' }).then(ok => ok && UI.busy(e.currentTarget, async () => {
+      UI.confirm({ title: 'Mulai blast?', message: 'Pesan akan dikirim ke <b>' + num(list.length) + '</b> nomor dalam ' + Math.ceil(list.length / st.batch) + ' batch (' + st.batch + ' per batch, jeda ' + h($('#bJeda').value) + ' dtk). Pengiriman langsung dimulai; server melanjutkan hingga ' + st.perPutaran + ' batch per menit walau halaman ditutup.', okText: 'Mulai blast' }).then(ok => ok && UI.busy(e.currentTarget, async () => {
         const res = await API.call('wa.blastCreate', { judul: $('#bJudul').value.trim(), pesan: $('#bPesan').value, ukuranBatch: st.batch, jeda: $('#bJeda').value.trim(), sasaran: ($('#bSrc').selectedOptions[0] || {}).text + ($('#bTag').value ? ' · tag ' + $('#bTag').value : ''), penerima: list.map(x => ({ hp: x.hp, nama: x.nama })) });
-        if (UI.showResult(res)) { monitor(res.data.blastId); hist(); }
+        if (UI.showResult(res)) { if (res.data.perPutaran) st.perPutaran = res.data.perPutaran; st.auto = true; await monitor(res.data.blastId); hist(); step(); }
       }));
     };
     const drawProg = (b) => {
@@ -103,22 +103,31 @@ Pages.notifikasi = {
       const run = b.Status === 'Berjalan';
       box.innerHTML = '<div class="card-h"><div><h2 class="sec-title">' + icon('send') + h(b.Judul) + ' <span class="badge ' + (run ? 'b-info b-live' : b.Status === 'Selesai' ? 'b-ok' : 'b-pend') + '">' + h(b.Status) + '</span></h2><div class="sec-sub">' + h(b.BlastID) + ' · batch ' + b.UkuranBatch + ' · jeda ' + h(b.JedaDetik) + ' dtk</div></div></div>' +
         '<div class="bar ok" style="height:10px"><i style="width:' + b.persen + '%"></i></div><div class="kpi-foot"><span><b>' + num(b.Terkirim) + '</b> terkirim · <b style="color:var(--err)">' + num(b.Gagal) + '</b> gagal · <b>' + num(b.sisa) + '</b> sisa dari ' + num(b.Total) + '</span><span>' + b.persen + '%</span></div>' +
-        (run ? '<div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" id="pNext" data-busy="Mengirim batch…">' + icon('play') + 'Kirim Batch Berikutnya Sekarang</button>' +
+        (run ? '<div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" id="pNext" data-busy="Mengirim…">' + icon('play') + 'Kirim ' + st.perPutaran + ' Batch Sekarang</button>' +
+          '<button class="btn btn-outline btn-sm" id="pAll" data-busy="Mengirim semua…">' + icon('zap') + 'Kirim Semua Sekarang</button>' +
           '<label class="switch"><input type="checkbox" id="pAuto" ' + (st.auto ? 'checked' : '') + '><span class="tr"></span><span class="small">Otomatis <span id="pCd"></span></span></label>' +
-          '<button class="btn btn-soft-danger btn-sm" id="pStop">' + icon('stop') + 'Hentikan</button></div><p class="xs muted" style="margin:10px 0 0">Server tetap mengirim 1 batch/menit walau halaman ditutup.</p>' : '');
+          '<button class="btn btn-soft-danger btn-sm" id="pStop">' + icon('stop') + 'Hentikan</button></div><p class="xs muted" style="margin:10px 0 0">Selama halaman terbuka, batch dikirim beruntun otomatis. Bila halaman ditutup, server tetap mengirim hingga ' + st.perPutaran + ' batch per menit. Jeda antarpesan dijalankan oleh Fonnte.</p>' : '');
       if (!run) { st.auto = false; clearInterval(st.timer); return; }
-      $('#pNext').onclick = (e) => UI.busy(e.currentTarget, step);
+      $('#pNext').onclick = (e) => UI.busy(e.currentTarget, () => step());
+      $('#pAll').onclick = (e) => UI.busy(e.currentTarget, () => step(true));
       $('#pAuto').onchange = () => { st.auto = $('#pAuto').checked; tick(); };
       $('#pStop').onclick = async () => { if (!(await UI.confirm({ title: 'Hentikan blast?', danger: true, message: 'Pesan yang belum terkirim dibatalkan.', okText: 'Hentikan' }))) return; const rr = await API.call('wa.blastStop', { blastId: b.BlastID }); if (UI.showResult(rr)) { st.auto = false; hist(); monitor(b.BlastID); } };
     };
-    const step = async () => { const res = await API.call('wa.blastProcess', { blastId: st.active }); if (res.success) { drawProg(res.data.blast); hist(); } else UI.showResult(res); };
+    const step = async (semua) => {
+      if (st.busy || !st.active) return; st.busy = true; clearInterval(st.timer);
+      try {
+        const res = await API.call('wa.blastProcess', { blastId: st.active, semua: !!semua }, { timeout: 120000 });
+        if (res.success) { drawProg(res.data.blast); hist(); } else UI.showResult(res);
+      } finally { st.busy = false; }
+      if (st.auto && ctx.isCurrent()) tick();
+    };
     const tick = () => {
       clearInterval(st.timer); if (!st.auto) { const cd = $('#pCd'); if (cd) cd.textContent = ''; return; }
-      const wait = Math.max(30, st.batch * (parseInt($('#bJeda').value, 10) || 5)); st.count = wait;
+      const wait = 10; st.count = wait;
       st.timer = setInterval(async () => {
         if (!ctx.isCurrent()) { clearInterval(st.timer); return; }
         st.count--; const cd = $('#pCd'); if (cd) cd.textContent = '(' + st.count + ' dtk)';
-        if (st.count <= 0) { clearInterval(st.timer); await step(); if (st.auto) tick(); }
+        if (st.count <= 0) { clearInterval(st.timer); await step(); }
       }, 1000);
     };
     const monitor = async (id) => { st.active = id; const res = await API.call('wa.blastList', {}, { silent: true }); if (res.success) drawProg(res.data.rows.find(b => b.BlastID === id)); };
@@ -135,7 +144,7 @@ Pages.notifikasi = {
     const preset = Pages.notifikasi._preset; Pages.notifikasi._preset = null;
     if (preset && preset.ids) { await loadAud($('#bLoad'), preset.ids); UI.toast(preset.ids.length + ' kontak dari CRM dimuat.', 'info'); }
     const running = await API.call('wa.blastList', {}, { silent: true });
-    if (running.success) { const b = running.data.rows.find(x => x.Status === 'Berjalan'); if (b) monitor(b.BlastID); }
+    if (running.success) { const b = running.data.rows.find(x => x.Status === 'Berjalan'); if (b) { await monitor(b.BlastID); tick(); } }
   },
 
   async antrean(body, ctx) {
@@ -168,20 +177,23 @@ Pages.notifikasi = {
       '<div class="field" style="margin-bottom:12px"><label>Token Fonnte</label><input class="input" type="password" id="kTok" placeholder="' + h(c.tokenMask || 'Belum diisi — tempel token dari fonnte.com') + '" autocomplete="off"><span class="hint">Disimpan di Script Properties; tidak pernah dikirim ke browser.</span></div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn btn-outline btn-sm" id="kDev" data-busy="Mengecek…">' + icon('zap') + 'Cek Perangkat</button><input class="input" id="kTestNo" placeholder="0812… untuk tes" style="width:170px;height:32px"><button class="btn btn-outline btn-sm" id="kTestWa" data-busy="Mengirim…">' + icon('send') + 'Kirim Tes WA</button></div><div id="kDevInfo"></div>' +
       '<div class="form-grid"><div class="field"><label>Batch default blast</label><select class="select" id="kBatch">' + UI.opts([10, 20, 50], c.batchDefault) + '</select></div><div class="field"><label>Jeda antarpesan (detik)</label><input class="input" id="kJeda" value="' + h(c.jeda) + '"><span class="hint">Angka (5) atau rentang acak (3-8)</span></div>' +
+      '<div class="field"><label>Batch per putaran (blast cepat)</label><input class="input" type="number" min="1" max="20" id="kPut" value="' + h(c.perPutaran || 5) + '"><span class="hint">Jumlah batch yang dikirim sekaligus tiap putaran/menit (1–20)</span></div><div></div>' +
       '<label class="switch span2"><input type="checkbox" id="kDet" ' + (c.deteksiOtomatis ? 'checked' : '') + '><span class="tr"></span><span class="small">Deteksi otomatis nomor kontak baru (tiap ±10 menit, 50 nomor)</span></label></div></section>' +
-      '<section class="card"><div class="card-h"><h2 class="sec-title">' + icon('mail') + 'Email (Gmail)</h2><label class="switch"><input type="checkbox" id="kEm" ' + (c.emailAktif ? 'checked' : '') + '><span class="tr"></span><b>' + (c.emailAktif ? 'AKTIF' : 'NONAKTIF') + '</b></label></div>' +
+      '<section class="card"><div class="card-h"><h2 class="sec-title">' + icon('mail') + 'Email (Gmail)</h2><label class="switch"><input type="checkbox" id="kEm" ' + (c.emailAktif ? 'checked' : '') + '><span class="tr"></span><b id="kEmL">' + (c.emailAktif ? 'AKTIF' : 'NONAKTIF') + '</b></label></div>' +
       '<div class="kv-grid" style="margin-bottom:12px"><div class="kv-box"><div class="k">Sisa kuota email hari ini</div><div class="v">' + (c.kuotaEmail === null ? '—' : num(c.kuotaEmail)) + '</div></div><div class="kv-box"><div class="k">Trigger antrean (1 menit)</div><div class="v">' + (c.trigger ? '<span style="color:var(--ok)">● Aktif</span>' : '<span style="color:var(--err)">● Belum terpasang</span>') + '</div></div></div>' +
       '<div class="form-grid"><div class="field"><label>Nama pengirim</label><input class="input" id="kNama" value="' + h(c.namaPengirim) + '"></div><div class="field"><label>Jam kirim notifikasi harian (WIB)</label><input class="input" type="number" min="0" max="23" id="kJam" value="' + c.jamHarian + '"></div>' +
       '<div class="field span2"><label>URL app (untuk {link})</label><input class="input" id="kUrl" value="' + h(c.appUrl) + '" placeholder="https://username.github.io/dashboard-mri/"></div></div>' +
       '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><input class="input" id="kTestEm" placeholder="email untuk tes" style="width:220px;height:32px"><button class="btn btn-outline btn-sm" id="kTestEmail" data-busy="Mengirim…">' + icon('send') + 'Kirim Tes Email</button></div></section></div>' +
-      '<section class="card flush mb"><div class="pad card-h" style="margin:0"><div><h2 class="sec-title">Matriks Notifikasi Otomatis</h2><div class="sec-sub">Pilih event mana yang dikirim lewat WA dan/atau Email. Saklar utama kanal harus aktif.</div></div></div>' +
+      '<section class="card flush mb"><div class="pad card-h" style="margin:0"><div><h2 class="sec-title">Matriks Notifikasi Otomatis</h2><div class="sec-sub">Pilih event mana yang dikirim lewat WA dan/atau Email — bisa diatur kapan saja. Pesan benar-benar terkirim bila saklar utama kanalnya AKTIF.</div></div></div><div id="kMxNote"></div>' +
       '<div class="tbl-wrap"><table class="tbl matrix"><thead><tr><th>Event</th><th>Penerima</th><th class="c">WhatsApp</th><th class="c">Email</th><th class="r">Template</th></tr></thead><tbody id="kMx"></tbody></table></div></section>' +
       '<div style="display:flex;justify-content:flex-end"><button class="btn btn-primary btn-lg" id="kSave" data-busy="Menyimpan…">' + icon('check') + 'Simpan Konfigurasi</button></div>';
     const drawMx = () => {
+      // v2.6: saklar per event TIDAK dikunci walau saklar utama nonaktif (pengaturan tersimpan & berlaku saat kanal diaktifkan)
       const wa = $('#kWa').checked, em = $('#kEm').checked;
+      $('#kMxNote').innerHTML = !wa || !em ? '<div class="notice warn" style="margin:0 16px 12px">' + icon('info') + '<div>Saklar utama ' + [!wa ? '<b>WhatsApp</b>' : '', !em ? '<b>Email</b>' : ''].filter(Boolean).join(' & ') + ' sedang NONAKTIF — pilihan per event tetap bisa diatur & disimpan, dan langsung berlaku saat kanal diaktifkan.</div></div>' : '';
       $('#kMx').innerHTML = Object.keys(M).map(k => { const m = M[k]; return '<tr data-k="' + k + '"><td><b>' + h(m.label) + '</b><div class="xs muted mono">' + k + '</div></td><td class="small t2" style="max-width:280px">' + h(m.penerima) + '</td>' +
-        '<td class="c"><label class="switch"><input type="checkbox" data-ch="wa" ' + (m.wa ? 'checked' : '') + ' ' + (wa ? '' : 'disabled') + ' aria-label="WA ' + h(m.label) + '"><span class="tr"></span></label></td>' +
-        '<td class="c"><label class="switch"><input type="checkbox" data-ch="email" ' + (m.email ? 'checked' : '') + ' ' + (em ? '' : 'disabled') + ' aria-label="Email ' + h(m.label) + '"><span class="tr"></span></label></td>' +
+        '<td class="c"><label class="switch ' + (wa ? '' : 'muted-sw') + '"><input type="checkbox" data-ch="wa" ' + (m.wa ? 'checked' : '') + ' aria-label="WA ' + h(m.label) + '"><span class="tr"></span></label></td>' +
+        '<td class="c"><label class="switch ' + (em ? '' : 'muted-sw') + '"><input type="checkbox" data-ch="email" ' + (m.email ? 'checked' : '') + ' aria-label="Email ' + h(m.label) + '"><span class="tr"></span></label></td>' +
         '<td class="r"><button class="btn btn-ghost btn-xs" data-ed>' + icon('edit', 'sm') + 'Ubah</button></td></tr>' +
         '<tr class="hidden" data-edrow="' + k + '"><td colspan="5" style="background:var(--bg)"><div class="grid g2"><div><div class="field" style="margin-bottom:8px"><label>Subjek email</label><input class="input" data-f="subjek" value="' + h(m.subjek) + '"></div>' +
         '<div class="field"><label>Isi pesan</label><textarea class="input" data-f="pesan" rows="7">' + h(m.pesan) + '</textarea></div><div class="var-btns">' + ['nama', 'institusi', 'link'].concat(m.vars || []).map(v => '<button type="button" data-v="{' + v + '}">{' + v + '}</button>').join('') + '</div>' +
@@ -197,13 +209,14 @@ Pages.notifikasi = {
       });
     };
     drawMx();
-    $('#kWa').onchange = () => { $('#kWaL').textContent = $('#kWa').checked ? 'AKTIF' : 'NONAKTIF'; drawMx(); }; $('#kEm').onchange = drawMx;
+    $('#kWa').onchange = () => { $('#kWaL').textContent = $('#kWa').checked ? 'AKTIF' : 'NONAKTIF'; drawMx(); };
+    $('#kEm').onchange = () => { $('#kEmL').textContent = $('#kEm').checked ? 'AKTIF' : 'NONAKTIF'; drawMx(); };
     $('#kDev').onclick = (e) => UI.busy(e.currentTarget, async () => { const rr = await API.call('wa.device', {}); $('#kDevInfo').innerHTML = rr.success ? '<div class="notice">' + icon('phone') + '<div>Perangkat <b>' + h(rr.data.device) + '</b> · status <b style="color:' + (rr.data.status === 'connect' ? 'var(--ok)' : 'var(--err)') + '">' + h(rr.data.status) + '</b> · paket ' + h(rr.data.paket) + ' · kuota ' + h(rr.data.kuota) + '</div></div>' : '<div class="notice err">' + icon('alertc') + '<div>' + h(rr.message) + ' (simpan token dulu bila baru diisi)</div></div>'; });
     $('#kTestWa').onclick = (e) => UI.busy(e.currentTarget, async () => UI.showResult(await API.call('wa.test', { nomor: $('#kTestNo').value })));
     $('#kTestEmail').onclick = (e) => UI.busy(e.currentTarget, async () => UI.showResult(await API.call('email.test', { email: $('#kTestEm').value })));
     $('#kSave').onclick = (e) => UI.busy(e.currentTarget, async () => {
       const rr = await API.call('notif.configSave', { waAktif: $('#kWa').checked, emailAktif: $('#kEm').checked, token: $('#kTok').value.trim(), batchDefault: +$('#kBatch').value, jeda: $('#kJeda').value.trim(),
-        deteksiOtomatis: $('#kDet').checked, namaPengirim: $('#kNama').value.trim(), appUrl: $('#kUrl').value.trim(), jamHarian: +$('#kJam').value, matriks: M });
+        deteksiOtomatis: $('#kDet').checked, namaPengirim: $('#kNama').value.trim(), appUrl: $('#kUrl').value.trim(), jamHarian: +$('#kJam').value, perPutaran: +$('#kPut').value || 5, matriks: M });
       if (UI.showResult(rr)) App.go();
     });
   }

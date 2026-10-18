@@ -1,6 +1,6 @@
 /**
  * pages-dokumen.js — Mesin Dokumen (gas-doc-engine) di frontend · v2.5
- *  • DocPrint.open(kode, params)  : alur "cetak langsung" untuk SEMUA dokumen (MRIR, NCR, summary, rekap training)
+ *  • DocPrint.open(kode, params)  : alur "cetak langsung" untuk SEMUA dokumen (Laporan Inspeksi, MRIR, summary, rekap training)
  *  • Verifikasi.render(kode)      : halaman publik #/v/<kode> (tanpa login) + cek hash PDF di peramban
  *  • Pages.dokumen                : arsip dokumen · template Google Docs · pejabat penanda tangan
  */
@@ -227,7 +227,9 @@ function openPejabatForm(p, jabatan, onSaved) {
   });
 }
 
+const KODE_TAMPIL = { NCR: 'MRIR', NCR_SUMMARY: 'MRIR-SUM' };              // v2.6: kode internal NCR tampil sebagai MRIR
 function contohNomor(fmt, kode) {
+  kode = KODE_TAMPIL[kode] || kode;
   const d = new Date(Date.now() + 7 * 3600000), th = d.getUTCFullYear(), bl = d.getUTCMonth() + 1;
   const R = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
   return String(fmt || '').replace(/\{URUT4\}/g, '0001').replace(/\{URUT\}/g, '001').replace(/\{KODE\}/g, kode).replace(/\{BULAN\}/g, R[bl - 1]).replace(/\{BLN\}/g, String(bl).padStart(2, '0')).replace(/\{TAHUN\}/g, th).replace(/\{TH\}/g, String(th).slice(-2));
@@ -285,7 +287,7 @@ Pages.dokumen = {
     Pages.dokumen._tab = tab;
     el.innerHTML =
       '<div class="ph"><div class="ph-title"><div class="eyebrow"><span class="hl">● Mesin Dokumen</span><span>• template Google Docs · QR verifikasi · arsip</span></div><h1>Dokumen & Template</h1>' +
-      '<p>Semua cetak dokumen sistem (MRIR, NCR, NCR/SLA/Executive Summary, Rekap Training) memakai template Google Docs yang bisa diedit bebas, bernomor otomatis, ber-QR, dan tercatat di arsip.</p></div></div>' +
+      '<p>Semua cetak dokumen sistem (Laporan Inspeksi, MRIR, MRIR/SLA/Executive Summary, Rekap Training) memakai template Google Docs yang bisa diedit bebas, bernomor otomatis, ber-QR, dan tercatat di arsip.</p></div></div>' +
       '<div class="tabs mb" id="dkTabs" role="tablist">' + [['arsip', 'Arsip Dokumen', 'archive'], ['template', 'Template', 'file'], ['pejabat', 'Pejabat Penanda Tangan', 'users']].map(t => '<button class="tab ' + (tab === t[0] ? 'on' : '') + '" data-t="' + t[0] + '" role="tab">' + icon(t[2], 'sm') + t[1] + '</button>').join('') + '</div>' +
       '<div id="dkBody"></div>';
     UI.$$('#dkTabs [data-t]').forEach(b => b.onclick = () => { Pages.dokumen._tab = b.dataset.t; history.replaceState(null, '', '#/dokumen?tab=' + b.dataset.t); App.go(); });
@@ -354,7 +356,7 @@ Pages.dokumen = {
         (!d.alamat ? '<div class="notice" style="margin-top:0">' + icon('info') + '<div>Alamat kop dokumen (<span class="mono">INSTITUSI_ALAMAT</span>) bisa diisi di System Config. Logo perusahaan cukup ditempel langsung di header template Google Docs.</div></div>' : '') +
         (isSA ? '<div class="notice" style="margin-top:0">' + icon('file') + '<div style="flex:1"><b>Cara mengubah desain dokumen:</b> klik <b>Edit di Google Docs</b> → ubah teks, tata letak, logo, tabel → simpan. Placeholder <span class="mono">{{…}}</span> boleh dipindah/dihapus/ditambah; sistem memindai ulang otomatis saat cetak berikutnya.' +
           (d.folderUrl ? ' <a href="' + h(d.folderUrl) + '" target="_blank" rel="noopener">Buka folder template ↗</a>' : '') + '</div></div>' : '');
-      $('#tpGrid').innerHTML = d.templates.map(t => '<section class="card tpl-card" data-k="' + t.kode + '"><div class="card-h"><div><h2 class="sec-title">' + h(t.nama) + '</h2><div class="sec-sub">' + h(t.modul) + ' · kode <span class="mono">' + t.kode + '</span></div></div>' +
+      $('#tpGrid').innerHTML = d.templates.map(t => '<section class="card tpl-card" data-k="' + t.kode + '"><div class="card-h"><div><h2 class="sec-title">' + h(t.nama) + '</h2><div class="sec-sub">' + h(t.modul) + ' · kode <span class="mono">' + h(KODE_TAMPIL[t.kode] || t.kode) + '</span></div></div>' +
         (t.ada ? '<span class="badge ' + (t.aktif ? 'b-ok' : 'b-pend') + '">' + (t.aktif ? 'Aktif' : 'Nonaktif') + ' · v' + t.versi + '</span>' : '<span class="badge b-warn">Belum dibuat</span>') + '</div>' +
         '<div class="kv-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div class="kv-box"><div class="k">Nomor berikut</div><div class="v mono small">' + h(t.nomorContoh) + '</div></div>' +
         '<div class="kv-box"><div class="k">Dokumen terbit</div><div class="v">' + num(t.jumlahDokumen) + '</div></div><div class="kv-box"><div class="k">Placeholder</div><div class="v">' + num(t.penanda) + '</div></div></div>' +

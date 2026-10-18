@@ -61,7 +61,12 @@ const UI = (() => {
     printer: '<path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
     qr: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 17h3v4h-3"/>',
     pen: '<path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
-    target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'
+    target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+    tv: '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
+    book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5Z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/><path d="M9 7h7M9 11h5"/>',
+    list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+    maximize: '<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/>',
+    up: '<path d="m18 15-6-6-6 6"/>', down: '<path d="m6 9 6 6 6-6"/>'
   };
   const icon = (n, cls = '') => '<svg class="i ' + cls + '" viewBox="0 0 24 24" aria-hidden="true">' + (P[n] || P.info) + '</svg>';
   const GOOGLE_G = '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
@@ -91,10 +96,14 @@ const UI = (() => {
   const todayYmd = () => { const d = new Date(Date.now() + 7 * 3600000); return d.toISOString().substring(0, 10); };
 
   // ------------------------------------------------------------------ badge
-  const MRI_B = { OK: ['b-ok', 'OK · Passed'], NG: ['b-err', 'NG · Rejected'], Quarantine: ['b-warn', 'Quarantine'], Pending: ['b-pend', 'Pending'] };
+  // v2.6 — status mengikuti file Excel (TEXT AFTER)
+  const MRI_B = { Inspected: ['b-ok', 'Inspected'], Revoke: ['b-err', 'Revoke'], 'Awaiting Inspection': ['b-warn', 'Awaiting Inspection'] };
+  const MRI_ST = ['Inspected', 'Revoke', 'Awaiting Inspection'];
+  const MRI_COLOR = { Inspected: '#16A34A', Revoke: '#DC2626', 'Awaiting Inspection': '#D97706' };
   const mriBadge = (s) => { const b = MRI_B[s] || ['b-pend', s || '—']; return '<span class="badge ' + b[0] + '">' + h(b[1]) + '</span>'; };
-  const FD_B = { Open: 'b-err', 'Under Investigation': 'b-warn', Pending: 'b-pend', Closed: 'b-closed' };
-  const fdBadge = (s) => '<span class="badge ' + (FD_B[s] || 'b-pend') + '">' + h(s) + '</span>';
+  const FD_B = { Open: 'b-err', 'Under Investigation': 'b-warn', Pending: 'b-pend', 'Sent to Customer': 'b-info', Closed: 'b-closed' };
+  const fdTone = (s) => FD_B[s] || (/closed|selesai/i.test(s) ? 'b-closed' : /sent|kirim/i.test(s) ? 'b-info' : /open/i.test(s) ? 'b-err' : 'b-warn');
+  const fdBadge = (s) => '<span class="badge nc ' + fdTone(s) + '">' + h(s) + '</span>';
   const agingBadge = (f) => f.agingLevel === 'closed' ? '<span class="muted num">' + num(f.aging) + ' hr</span>' :
     '<span class="badge nc ' + (f.agingLevel === 'crit' ? 'b-err' : f.agingLevel === 'warn' ? 'b-warn' : 'b-ok') + ' num">' + num(f.aging) + ' hari</span>';
   const delta = (v, opts = {}) => {
@@ -264,23 +273,69 @@ const UI = (() => {
       catch (e) { toast('Gagal membuat file Excel: ' + e.message, 'error'); }
     });
   }
-  /** Baca .xlsx/.xls/.csv → array objek (header terdeteksi otomatis di 10 baris pertama) */
+  /**
+   * Baca .xlsx/.xls/.csv → array objek (header terdeteksi otomatis di 10 baris pertama).
+   * v2.6: tanggal dibaca dari NOMOR SERI Excel (bukan cellDates) — dulu di zona WIB SheetJS menghasilkan
+   * jam 23:59:48 hari sebelumnya sehingga semua tanggal tersimpan mundur 1 hari. Sel error (#N/A) = kosong.
+   * Kolom tanggal berupa TEKS (mis. 08/25/2026) diseragamkan per kolom: bila ada nilai > 12 urutannya pasti.
+   */
   async function readSheetFile(file, expectHeaders = []) {
     await ensureXLSX();
     const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: 'array', cellDates: true, raw: false, dateNF: 'yyyy-mm-dd' });
+    const csv = /\.(csv|txt)$/i.test(file.name || '');
+    const wb = XLSX.read(buf, { type: 'array', cellDates: false, cellNF: true, raw: csv });
+    return parseWorkbook(wb, expectHeaders);
+  }
+  const pad = (n) => String(n).padStart(2, '0');
+  function serialYmd(n, d1904) {
+    const d = new Date(Math.round((Math.floor(Number(n) + 1e-7) - (d1904 ? 24107 : 25569)) * 86400000));
+    return isNaN(d.getTime()) ? '' : d.toISOString().substring(0, 10);
+  }
+  function cellVal(c, d1904) {
+    if (!c || c.t === 'z') return '';
+    if (c.t === 'e') return '';                                                    // #N/A, #REF!, …
+    if (c.t === 'n' && c.z && XLSX.SSF.is_date(c.z)) return serialYmd(c.v, d1904);
+    if (c.t === 'd' && c.v instanceof Date) { const d = new Date(c.v.getTime() + 12 * 3600000); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+    return c.v === undefined || c.v === null ? '' : c.v;
+  }
+  const TXT_DATE = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4}|\d{2})(?:[ T].*)?$/;
+  /** Seragamkan kolom tanggal teks: bukti hari > 12 di posisi pertama → D/M, di posisi kedua → M/D */
+  function normTextDates(rows, header) {
+    const hasil = {};
+    header.forEach((k) => {
+      if (!k) return;
+      let dmy = 0, mdy = 0, n = 0;
+      rows.forEach((o) => { const m = typeof o[k] === 'string' ? o[k].trim().match(TXT_DATE) : null; if (!m) return; n++; if (+m[1] > 12 && +m[2] <= 12) dmy++; else if (+m[2] > 12 && +m[1] <= 12) mdy++; });
+      if (!n || (dmy && mdy) || (!dmy && !mdy)) return;
+      const isMdy = mdy > 0; hasil[k] = isMdy ? 'M/D/Y' : 'D/M/Y';
+      rows.forEach((o) => {
+        const m = typeof o[k] === 'string' ? o[k].trim().match(TXT_DATE) : null; if (!m) return;
+        const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]), mo = isMdy ? +m[1] : +m[2], d = isMdy ? +m[2] : +m[1];
+        if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) o[k] = y + '-' + pad(mo) + '-' + pad(d);
+      });
+    });
+    return hasil;
+  }
+  function parseWorkbook(wb, expectHeaders = []) {
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '', blankrows: true });
+    const d1904 = !!(wb.Workbook && wb.Workbook.WBProps && wb.Workbook.WBProps.date1904);
+    const range = ws && ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : null;
+    const aoa = [];
+    if (range) for (let R = range.s.r; R <= range.e.r; R++) {
+      const row = []; for (let C = range.s.c; C <= range.e.c; C++) row.push(cellVal(ws[XLSX.utils.encode_cell({ r: R, c: C })], d1904));
+      aoa.push(row);
+    }
     const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
     const want = expectHeaders.map(norm);
     let hi = 0, best = -1;
     aoa.slice(0, 10).forEach((r, i) => { const sc = r.filter(c => c !== '' && (want.length ? want.indexOf(norm(c)) > -1 : true)).length; if (sc > best) { best = sc; hi = i; } });
     const header = (aoa[hi] || []).map(x => String(x).trim());
-    const range = ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : { s: { r: 0 } };
+    const r0 = range ? range.s.r : 0;
     const rows = aoa.map((r, i) => [r, i]).slice(hi + 1).filter(([r]) => r.some(c => c !== '')).map(([r, i]) => {
-      const o = { __row: range.s.r + i + 1 }; header.forEach((k, i) => { if (!k) return; let v = r[i]; if (v instanceof Date) v = new Date(v.getTime() - v.getTimezoneOffset() * 60000).toISOString().substring(0, 10); o[k] = v; }); return o;
+      const o = { __row: r0 + i + 1 }; header.forEach((k, j) => { if (k) o[k] = r[j]; }); return o;
     });
-    return { rows, header, headerRow: range.s.r + hi + 1, sheet: wb.SheetNames[0] };
+    const tanggalTeks = normTextDates(rows, header);
+    return { rows, header, headerRow: r0 + hi + 1, sheet: wb.SheetNames[0], tanggalTeks };
   }
   async function downloadTemplate(headers, name, sample) {
     await ensureXLSX();
@@ -294,7 +349,7 @@ const UI = (() => {
   // ------------------------------------------------------------------ v2.5: target KPI editable (Superadmin & Admin)
   const TARGET_DEF = {
     COMPLETION_TARGET: { label: 'Target Completion Rate', unit: '%', min: 1, max: 100, step: 0.5, chips: [85, 90, 95, 98, 100],
-      help: 'Persentase item diterima yang harus sudah selesai diinspeksi. Dipakai di Dashboard, Laporan Per Customer & Laporan Periode.' },
+      help: 'Persentase item yang sudah selesai (Inspected + Revoke) dari seluruh item diterima. Dipakai di Dashboard, Laporan Per Customer & Laporan Periode.' },
     TAT_TARGET_HARI: { label: 'Batas SLA Average Inspection TAT', unit: 'hari', min: 0.5, max: 60, step: 0.5, chips: [1, 2, 3, 5, 7],
       help: 'Inspeksi dianggap dalam SLA bila TAT ≤ nilai ini. Dipakai di Dashboard, Data Inspeksi, Laporan Customer & Periode, serta alert material pending.' }
   };
@@ -342,8 +397,8 @@ const UI = (() => {
     return URL.createObjectURL(new Blob([arr], { type: 'application/pdf' }));
   }
 
-  return { icon, GOOGLE_G, h, $, $$, num, pct, date, dt, ago, initials, debounce, todayYmd, BLN, BULAN, mriBadge, fdBadge, agingBadge, delta, waBadge, roleBadge,
+  return { icon, GOOGLE_G, h, $, $$, num, pct, date, dt, ago, initials, debounce, todayYmd, BLN, BULAN, mriBadge, fdBadge, fdTone, MRI_ST, MRI_COLOR, agingBadge, delta, waBadge, roleBadge,
     toast, modal, confirm, busy, showResult, pager, thSort, bindSort, empty, skelRows, opts, loadScript, ensureChart, ensureXLSX, chart, destroyCharts, cssVar, S,
-    exportXlsx, doExport, readSheetFile, downloadTemplate, tgtBtn, editTarget, pdfUrl, fast: false,
+    exportXlsx, doExport, readSheetFile, parseWorkbook, downloadTemplate, tgtBtn, editTarget, pdfUrl, fast: false,
     cetak: (kode, params, opts) => (window.DocPrint ? DocPrint.open(kode, params, opts) : toast('Modul dokumen belum dimuat.', 'error')) };
 })();

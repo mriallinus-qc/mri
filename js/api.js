@@ -1,5 +1,5 @@
 /**
- * api.js — komunikasi ke GAS REST API (Instant UX PRO, v2.5)
+ * api.js — komunikasi ke GAS REST API (Instant UX PRO, v2.6)
  * • POST text/plain (tanpa preflight CORS) { action, token, data, client, reqId }
  * • Timeout + retry: aksi BACA diulang otomatis (maks 3×), aksi TULIS membawa reqId unik
  *   sehingga aman diulang saat jaringan HP putus-sambung (server idempoten 6 jam)
@@ -9,14 +9,14 @@
  * • Perf.table() di console: total vs waktu server per aksi
  */
 const API = (() => {
-  const NS = 'mri:v25:';
+  const NS = 'mri:v26:';                                   // v2.6: bentuk data berubah (status Excel) → cache lama tidak dipakai
   const LS = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
     del(k) { try { localStorage.removeItem(k); } catch (e) {} },
     keys() { try { return Object.keys(localStorage); } catch (e) { return []; } }
   };
-  LS.keys().filter(k => k.indexOf('swr:') === 0).forEach(k => LS.del(k));          // cache v2.4 tidak dipakai lagi
+  LS.keys().filter(k => k.indexOf('swr:') === 0 || k.indexOf('mri:v25:') === 0).forEach(k => LS.del(k));   // cache versi lama dibuang
   let token = LS.get('mri_token') || '';
   let inflight = 0;
   const progress = (on) => {
@@ -26,7 +26,7 @@ const API = (() => {
   };
   const client = () => ({ ua: (navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari)\/[\d.]+/) || ['Browser'])[0] + ' · ' + (navigator.platform || '') });
   const configured = () => !!(window.APP_CONFIG && APP_CONFIG.GAS_URL && APP_CONFIG.GAS_URL.indexOf('GANTI_DENGAN') === -1);
-  const READ = /^(ping|publicConfig|verifikasiDokumen|me|bootstrap|batch|get[A-Z]\w*|filterData|exportExcel|migrasiScan|training\.list|doc\.(prepare|download|templates|pejabat|arsip)|notif\.(config|queue)|wa\.(device|audience|blastList)|crm\.(list|stats|detail|duplicates|export))$/;
+  const READ = /^(ping|publicConfig|verifikasiDokumen|me|bootstrap|batch|get[A-Z]\w*|filterData|exportExcel|migrasiScan|training\.list|doc\.(prepare|download|templates|pejabat|arsip)|notif\.(config|queue)|wa\.(device|audience|blastList)|crm\.(list|stats|detail|duplicates|export)|master\.get|tv\.(data|config))$/;
   const isRead = (a) => READ.test(a);
   const rid = () => Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -120,7 +120,7 @@ const API = (() => {
   }
   // Batas kesegaran per aksi (ms): dalam rentang ini pindah menu = 0 panggilan server
   const FRESH = { getLookups: 120000, getDashboard: 45000, getData: 45000, getReportFinding: 45000, getReportCustomer: 60000, getReportPeriod: 90000,
-    'training.list': 45000, 'doc.templates': 30000, 'doc.arsip': 20000, 'doc.pejabat': 60000, getAuditLog: 15000, getImportLog: 15000, 'notif.queue': 10000 };
+    'training.list': 45000, 'doc.templates': 30000, 'doc.arsip': 20000, 'doc.pejabat': 60000, getAuditLog: 15000, getImportLog: 15000, 'notif.queue': 10000, 'master.get': 30000 };
   /** render(data, fromCache) dipanggil maks. 2× dan hanya bila data berbeda */
   async function swr(action, data, render, opts = {}) {
     const k = keyOf(action, data), c = getC(k);

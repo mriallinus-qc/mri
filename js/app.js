@@ -2,6 +2,7 @@
  * app.js — auth, shell (sidebar + topbar), router hash, periode global, idle logout
  * v2.5 (Instant UX PRO): login & buka-ulang = 1 panggilan (bootstrap), prefetch menu saat idle (batch),
  *       warm-up saat kembali dari latar belakang, halaman publik verifikasi dokumen #/v/<kode>
+ * v2.6: menu Master Data & Panduan Pengguna, Dashboard TV publik #/tv/<token> (tanpa login, tanpa sidebar)
  */
 const Pages = {};
 const App = (() => {
@@ -15,8 +16,10 @@ const App = (() => {
     { id: 'customer', label: 'Laporan Per Customer', icon: 'users', roles: ALL },
     { id: 'periode', label: 'Laporan Periode', icon: 'calendar', roles: ALL },
     { id: 'training', label: 'Training Mandatory', icon: 'award', roles: ALL },
+    { id: 'panduan', label: 'Panduan Pengguna', icon: 'book', roles: ALL },
     { group: 'Settings' },
     { id: 'import', label: 'Data Import', icon: 'upload', roles: ADM },
+    { id: 'master', label: 'Master Data', icon: 'list', roles: ADM },
     { id: 'dokumen', label: 'Dokumen & Template', icon: 'printer', roles: ADM },
     { id: 'notifikasi', label: 'WhatsApp & Notifikasi', icon: 'message', roles: ADM },
     { id: 'crm', label: 'CRM Kontak', icon: 'contact', roles: ADM },
@@ -33,12 +36,15 @@ const App = (() => {
 
   // ---------------------------------------------------------------- init
   const verifyCode = () => { const m = location.hash.match(/^#\/v\/([^/?]*)/); return m ? decodeURIComponent(m[1]) : null; };
+  const tvToken = () => { const m = location.hash.match(/^#\/tv\/([^/?]*)/); return m ? decodeURIComponent(m[1]) : null; };
+  let tvMode = false;
   async function init() {
     ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(ev => window.addEventListener(ev, touch, { passive: true }));
     setInterval(checkIdle, 30000);
     window.addEventListener('hashchange', go);
     document.addEventListener('visibilitychange', onVisibility);
     if (!API.configured()) { hideBoot(); return renderNotConfigured(); }
+    if (tvToken() !== null) { hideBoot(); go(); return; }            // v2.6: Dashboard TV publik — tanpa login & tanpa sidebar
     if (verifyCode() !== null) { hideBoot(); go(); }                 // halaman publik verifikasi QR — tanpa login
     try { state.pub = JSON.parse(API.LS.get('mri_pub') || 'null'); } catch (e) {}
     const pubP = API.call('publicConfig', {}, { silent: true }).then(r => { if (r.success) { state.pub = r.data; API.LS.set('mri_pub', JSON.stringify(r.data)); } return r; });
@@ -303,8 +309,8 @@ const App = (() => {
   function bellMenu(e) {
     const l = state.lookups || {}, a = l.alerts || {};
     dropdown(e.currentTarget, '<div style="padding:8px 10px"><b>Peringatan operasional</b></div><div class="dd-sep"></div>' +
-      '<button class="dd-item" data-go="#/finding?aging=crit&tab=open">' + icon('alert') + '<span><b>' + UI.num(a.critical || 0) + '</b> finding open ≥ ' + (l.agingKritis || 14) + ' hari</span></button>' +
-      '<button class="dd-item" data-go="#/inspeksi?overTat=1&status=Pending">' + icon('clock') + '<span><b>' + UI.num(a.overTat || 0) + '</b> material pending > target TAT</span></button>' +
+      '<button class="dd-item" data-go="#/finding?aging=crit&tab=open">' + icon('alert') + '<span><b>' + UI.num(a.critical || 0) + '</b> finding open ≥ ' + (l.agingKritis || 30) + ' hari</span></button>' +
+      '<button class="dd-item" data-go="#/inspeksi?overTat=1&status=Awaiting%20Inspection">' + icon('clock') + '<span><b>' + UI.num(a.overTat || 0) + '</b> material awaiting inspection > target TAT</span></button>' +
       '<button class="dd-item" data-go="#/finding?tab=inv">' + icon('search') + '<span><b>' + UI.num(a.underInv || 0) + '</b> finding under investigation</span></button>' +
       '<button class="dd-item" data-go="#/training?status=Overdue">' + icon('award') + '<span><b>' + UI.num(a.trainingOverdue || 0) + '</b> training inspector overdue</span></button>' +
       '<button class="dd-item" data-go="#/training?status=Due%20Soon">' + icon('calendar') + '<span><b>' + UI.num(a.trainingDue || 0) + '</b> training jatuh tempo ≤ 30 hari</span></button>', (ev, d) => {
@@ -312,14 +318,17 @@ const App = (() => {
     });
   }
   function helpModal() {
-    UI.modal({ title: 'Bantuan & Hak Akses', size: 'lg', body:
+    const hm = UI.modal({ title: 'Bantuan & Hak Akses', size: 'lg', body:
       '<table class="tbl dense"><thead><tr><th>Fitur</th><th class="c">Superadmin</th><th class="c">Admin</th><th class="c">User</th></tr></thead><tbody>' +
-      [['Dashboard, Data Inspeksi (lihat), semua Laporan, Export Excel', 1, 1, 1], ['Tambah / edit data inspeksi & finding', 1, 1, 0], ['Hapus data (soft delete, wajib alasan)', 1, 0, 0],
+      [['Dashboard, Data Inspeksi (lihat), semua Laporan, Export Excel, Panduan Pengguna', 1, 1, 1], ['Top Inspector & produktivitas semua inspector (Dashboard)', 1, 0, 0],
+       ['Tambah / edit data inspeksi & finding (MRIR)', 1, 1, 0], ['Hapus data (soft delete, wajib alasan)', 1, 0, 0],
        ['Ubah target Completion Rate & batas SLA TAT (ikon pensil di kartu KPI)', 1, 1, 0], ['Training Mandatory: lihat matriks & cetak rekap', 1, 1, 1], ['Training Mandatory: tambah/edit, kirim reminder WA', 1, 1, 0],
-       ['Cetak dokumen PDF ber-QR (MRIR, NCR, Summary)', 1, 1, 1], ['Arsip dokumen & daftar pejabat (lihat)', 1, 1, 0], ['Edit template Google Docs, pejabat & tarik dokumen', 1, 0, 0],
-       ['Import Excel & sinkron API', 1, 1, 0], ['Migrasi spreadsheet lama', 1, 0, 0], ['Blast WhatsApp & CRM Kontak', 1, 1, 0], ['User Management, Audit Log, System Config, Konfigurasi Notifikasi', 1, 0, 0]]
+       ['Cetak dokumen PDF ber-QR (Laporan Inspeksi, MRIR, Summary)', 1, 1, 1], ['Arsip dokumen & daftar pejabat (lihat)', 1, 1, 0], ['Edit template Google Docs, pejabat & tarik dokumen', 1, 0, 0],
+       ['Import Excel & Manual Sync', 1, 1, 0], ['Master Data (PIC Unit, status finding, Type PO, kode inspector)', 1, 1, 0], ['Batalkan import / hapus massal data salah upload', 1, 0, 0],
+       ['Migrasi spreadsheet lama', 1, 0, 0], ['Blast WhatsApp & CRM Kontak', 1, 1, 0], ['User Management (termasuk hapus user), Audit Log, System Config, Dashboard TV, Konfigurasi Notifikasi', 1, 0, 0]]
         .map(r => '<tr><td>' + r[0] + '</td>' + r.slice(1).map(x => '<td class="c">' + (x ? '<span style="color:var(--ok)">✔</span>' : '<span class="muted">—</span>') + '</td>').join('') + '</tr>').join('') +
-      '</tbody></table><p class="small muted" style="margin-top:14px">Tips: klik kartu KPI untuk drill-down ke tabel detail. Data ditampilkan seketika dari cache lokal lalu diperbarui dari server. Sesi berakhir otomatis setelah ' + state.sessionMinutes + ' menit tanpa aktivitas.</p>' });
+      '</tbody></table><p class="small muted" style="margin-top:14px">Panduan lengkap: menu <a href="#/panduan">Panduan Pengguna</a>. Tips: klik kartu KPI untuk drill-down ke tabel detail. Data ditampilkan seketika dari cache lokal lalu diperbarui dari server. Sesi berakhir otomatis setelah ' + state.sessionMinutes + ' menit tanpa aktivitas.</p>' });
+    const lk = hm.el.querySelector('a[href="#/panduan"]'); if (lk) lk.onclick = () => hm.close();
   }
   function changePassword(forced) {
     const m = UI.modal({ title: forced ? 'Ganti password sementara Anda' : 'Ganti password', size: 'sm',
@@ -354,6 +363,9 @@ const App = (() => {
   }
   let routeSeq = 0;
   async function go() {
+    const tv = tvToken();
+    if (tv !== null) { tvMode = true; closeDropdowns(); UI.destroyCharts(); if (Pages.tv) Pages.tv.render(tv); return; }
+    if (tvMode) { location.reload(); return; }                       // keluar dari mode TV → muat ulang aplikasi normal
     const vc = verifyCode();
     if (vc !== null) { closeDropdowns(); if (window.Verifikasi) Verifikasi.render(vc); return; }      // publik, tanpa login
     if (!state.user) { if (!document.querySelector('.login-wrap') && API.configured() && !API.token) renderLogin(); return; }
